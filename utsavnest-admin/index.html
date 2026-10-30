@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; connect-src https://cgqombqcgcxgzwcbeoon.supabase.co; script-src 'unsafe-inline'; style-src 'unsafe-inline'; form-action 'none'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'">
+<title>UtsavNest • Owner Access</title>
+<style>
+:root{color-scheme:light;--ink:#23332d;--muted:#68756c;--cream:#f8f5ed;--maroon:#b95f4e;--line:#dedfd3}*{box-sizing:border-box}body{margin:0;background:var(--cream);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}header{border-bottom:1px solid var(--line);padding:16px 24px;display:flex;justify-content:space-between;align-items:center;background:white}header strong{font-family:Georgia,serif;font-size:28px}header span{font-size:12px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase}main{max-width:700px;margin:50px auto;padding:0 20px 40px}section{padding:28px;background:white;border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 26px #27392c09}section[hidden]{display:none}h1{font:normal 32px/1.1 Georgia,serif;margin:0 0 13px}h2{font:normal 20px Georgia,serif;margin:0 0 10px}p{color:var(--muted);margin:10px 0 22px}label{font-weight:600;font-size:14px;display:block;margin:18px 0 5px}input{display:block;width:100%;font:inherit;padding:14px;border:1px solid #bec8bc;border-radius:8px;background:white;color:var(--ink)}input:focus{outline:2px solid #527568;outline-offset:2px}button{display:inline-block;border:0;border-radius:8px;padding:13px 19px;background:var(--maroon);color:white;font:600 15px system-ui;cursor:pointer;margin-top:22px}button:disabled{opacity:.5;cursor:not-allowed}.quiet{background:transparent;color:var(--ink);border:1px solid #b1bfb3;margin-left:8px}#msg{border-radius:8px;padding:12px;margin:0 0 20px;background:#eef4eb;color:#244635}#msg[hidden]{display:none}#msg.error{background:#fbeae5;color:#962d29}.order{border-top:1px solid var(--line);padding:17px 0}.order b{display:block}.small{font-size:13px;color:var(--muted)}#orderRows{max-height:65vh;overflow:auto}.tag{font-size:13px;border:1px solid #c5cdc4;border-radius:15px;padding:3px 9px;display:inline-block;margin:8px 4px 0 0}footer{font-size:12px;text-align:center;color:var(--muted);padding:22px}
+</style></head>
+<body><header><strong>UtsavNest</strong><span>Private owner access</span></header>
+<main>
+<div id="msg" role="status" aria-live="polite" hidden></div>
+<section id="loading"><h1>Checking your secure link</h1><p>Validating with Supabase authentication.</p></section>
+<section id="reset" hidden>
+<h1>Set your admin password</h1><p>You're verified as the UtsavNest owner. Choose a new password. Your password goes directly to Supabase over HTTPS.</p>
+<form id="resetForm" autocomplete="off"><label for="newPass">New password (12 characters minimum)</label><input id="newPass" type="password" minlength="12" autocomplete="new-password" required>
+<label for="confirmPass">Confirm password</label><input id="confirmPass" type="password" minlength="12" autocomplete="new-password" required>
+<button type="submit" id="resetBtn">Save new password</button></form>
+</section>
+<section id="signIn" hidden><h1>Owner sign in</h1><p>Log in here if the Poke-hosted admin page is unavailable. This temporary page uses Supabase directly and never stores your password.</p>
+<form id="signInForm"><label>Email</label><input type="email" value="shop.utsavnest@gmail.com" autocomplete="username" readonly>
+<label for="loginPass">Password</label><input id="loginPass" type="password" autocomplete="current-password" required><button id="loginBtn" type="submit">Sign in securely</button></form></section>
+<section id="orders" hidden><h1>Order dashboard</h1><p id="subtitle">Read-only owner view, loaded directly from Supabase.</p>
+<button type="button" id="refreshBtn">Refresh orders</button><button type="button" class="quiet" id="signoutBtn">Sign out</button>
+<div id="orderRows"></div></section>
+</main><footer>Independent owner-recovery page • Customer checkout remains unchanged</footer>
+<script>
+(() => {
+"use strict";
+const BASE="https://cgqombqcgcxgzwcbeoon.supabase.co";
+const KEY="sb_publishable_eFHVbo31S5xPcmvm1fL55g_ZNQtyIWv";
+const EXPECTED_UID="9b170914-1ca7-4326-aecd-b8788a2955eb";
+const q=id=>document.getElementById(id);
+let bearer=null;
+const sections=["loading","reset","signIn","orders"];
+function show(id){for(const k of sections)q(k).hidden=k!==id}
+function status(msg,error=false){let el=q("msg");el.textContent=msg;el.className=error?"error":"";el.hidden=!msg}
+async function api(path,method,body,token){
+ const h={"apikey":KEY,"Content-Type":"application/json"};
+ if(token)h.Authorization="Bearer "+token;
+ const resp=await fetch(BASE+path,{method,headers:h,body:body===undefined?undefined:JSON.stringify(body),cache:"no-store",referrerPolicy:"no-referrer"});
+ let out=null;try{out=await resp.json()}catch{}
+ if(!resp.ok)throw Error(out?.msg||out?.message||out?.error_description||out?.error||"Request failed ("+resp.status+")");
+ return out;
+}
+async function boot(){
+ const hash=window.location.hash.startsWith("#")?window.location.hash.slice(1):"";
+ history.replaceState(null,"",window.location.pathname);
+ const params=new URLSearchParams(hash);
+ const th=params.get("token_hash");
+ if(!th){show("signIn");status("");return}
+ if(params.get("type")!=="recovery"){show("signIn");status("Invalid recovery type. Use the newest private recovery link.",true);return}
+ try{
+   const resp=await api("/auth/v1/verify","POST",{token_hash:th,type:"recovery"});
+   if(resp?.user?.id!==EXPECTED_UID||!resp.access_token)throw Error("Wrong owner account or missing session.");
+   bearer=resp.access_token;show("reset");status("Owner verified. Set a new password below.");
+ }catch(err){show("signIn");status("Recovery link couldn't be verified: "+err.message,true)}
+}
+q("resetForm").addEventListener("submit",async e=>{
+ e.preventDefault();const p=q("newPass").value,confirm=q("confirmPass").value;
+ if(p.length<12||p!==confirm){status("Use at least 12 characters and make both passwords match.",true);return}
+ q("resetBtn").disabled=true;
+ try{
+  if(!bearer)throw Error("Recovery session missing");
+  await api("/auth/v1/user","PUT",{password:p},bearer);
+  const t=bearer;bearer=null;q("newPass").value="";q("confirmPass").value="";
+  try{await api("/auth/v1/logout","POST",{},t)}catch{}
+  show("signIn");status("Password saved. Now sign in below with your new password.");
+ }catch(err){status("Couldn't update password: "+err.message,true)}
+ finally{q("resetBtn").disabled=false}
+});
+q("signInForm").addEventListener("submit",async e=>{
+ e.preventDefault();q("loginBtn").disabled=true;
+ try{
+  const r=await api("/auth/v1/token?grant_type=password","POST",{email:"shop.utsavnest@gmail.com",password:q("loginPass").value});
+  if(!r?.access_token||r?.user?.id!==EXPECTED_UID)throw Error("Owner credentials could not be verified.");
+  bearer=r.access_token;q("loginPass").value="";
+  const admin=await api("/rest/v1/admin_users?select=user_id&limit=1","GET",undefined,bearer);
+  if(!Array.isArray(admin)||!admin.some(a=>a.user_id===EXPECTED_UID))throw Error("No admin access for this user.");
+  show("orders");status("Signed in securely.");await loadOrders();
+ }catch(err){bearer=null;show("signIn");status("Sign-in failed: "+err.message,true)}
+ finally{q("loginBtn").disabled=false}
+});
+async function loadOrders(){
+ if(!bearer){show("signIn");return}
+ q("orderRows").textContent="Loading…";
+ try{
+  const cols="id,order_number,status,fulfillment_status,ship_name,ship_phone,ship_city,ship_state,ship_pincode,total_paise,created_at,supplier_order_id,courier,tracking_awb";
+  const data=await api("/rest/v1/orders?select="+encodeURIComponent(cols)+"&order=created_at.desc&limit=50","GET",undefined,bearer);
+  q("orderRows").replaceChildren();
+  if(!data.length){const p=document.createElement("p");p.textContent="No orders recorded yet.";q("orderRows").appendChild(p);return}
+  for(const o of data){
+   const div=document.createElement("div");div.className="order";
+   const title=document.createElement("b");title.textContent=(o.order_number||o.id)+" · ₹"+(Number(o.total_paise||0)/100).toFixed(2);
+   const meta=document.createElement("div");meta.className="small";meta.textContent=(o.created_at?new Date(o.created_at).toLocaleString("en-IN"):"")+" · "+(o.ship_name||"")+(o.ship_phone?" · "+o.ship_phone:"")+" · "+[o.ship_city,o.ship_state,o.ship_pincode].filter(Boolean).join(", ");
+   const tag=document.createElement("span");tag.className="tag";tag.textContent="Payment: "+(o.status||"unknown");
+   const full=document.createElement("span");full.className="tag";full.textContent="Fulfilment: "+(o.fulfillment_status||"pending");
+   div.append(title,meta,tag,full);
+   if(o.tracking_awb){const t=document.createElement("p");t.textContent="AWB: "+o.tracking_awb;div.appendChild(t)}
+   q("orderRows").appendChild(div)
+  }
+  status("Loaded "+data.length+" order(s).");
+ }catch(err){q("orderRows").textContent="";status("Couldn't read orders: "+err.message,true)}
+}
+q("refreshBtn").addEventListener("click",loadOrders);
+q("signoutBtn").addEventListener("click",async()=>{
+ const t=bearer;bearer=null;q("orderRows").replaceChildren();
+ try{if(t)await api("/auth/v1/logout","POST",{},t)}catch{}
+ show("signIn");status("Signed out.")
+});
+boot();
+})();
+</script></body></html>
